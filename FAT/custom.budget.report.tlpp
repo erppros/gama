@@ -1,0 +1,573 @@
+
+#include 'TOPCONN.CH'
+#Include "RWMAKE.CH"
+#Include "REPORT.CH"
+#INCLUDE "TbiConn.ch"
+#INCLUDE 'TOTVS.CH'
+
+#INCLUDE 'tlpp-object.th'
+#INCLUDE 'tlpp-core.th'
+#INCLUDE 'tlpp-probat.th'
+/*
+	{Protheus.doc}  BudgetReport								
+	Relatorio de Orçamento
+	@author D.Miguel										
+	@since 11/12/2024										
+	@version 1.0	*/	
+
+/*
+
+Tabela de códigos de alinhamento horizontal.
+0 - Alinhamento à esquerda;
+1 - Alinhamento à direita;
+2 - Alinhamento centralizado
+3 - Alinhamento justificado. (Opção disponível somente a partir da versão 1.6.2 da TOTVS Printer.)
+
+Tabela de códigos de alinhamento vertical.
+0 - Alinhamento centralizado;
+1 - Alinhamento superior;
+2 - Alinhamento inferior
+
+*/
+
+
+class BudgetReport
+
+	PUBLIC method  New() CONSTRUCTOR
+	public method  PrintReport()
+	public method  PrintCabec(nX)
+	public method  validPage(nX)
+
+	Public Data numPages as character
+	Public Data STARTBOX as numeric
+	Public Data MAXBOX_LIN as numeric
+	Public Data LIN as numeric
+	Public Data COL as numeric
+	Public Data COL2 as numeric
+	Public Data COL3 as numeric
+	Public Data CABEC_COL as numeric
+	Public Data CABEC_COL2 as numeric
+	Public Data CABEC_COL3 as numeric
+	Public Data ITEM_COL as numeric
+	Public Data ITEM_COL2 as numeric
+	Public Data ITEM_COL3 as numeric
+	Public Data ITEM_COL4 as numeric
+	Public Data ITEM_COL5 as numeric
+	Public Data ITEM_COL6 as numeric
+	Public Data ITEM_COL7 as numeric
+	Public Data ITEM_COL8 as numeric
+	Public Data ITEM_COL9 as numeric
+	Public Data ITEM_COL10 as numeric
+	Public Data ITEM_COL11 as numeric
+	Public Data DIV_INI as numeric
+	Public Data DIV_FIM as numeric
+	Public Data STARTLINE as numeric
+	Public Data ENDLINE   as numeric
+endclass
+
+method New() class BudgetReport
+
+
+return self
+
+/*************************************************
+Impressao do Relatorio de Orçamento
+**************************************************/
+
+static method PrintReport() class BudgetReport
+
+
+    Local cDiretorio            as character
+    Local nX                    as numeric
+
+    Local lBold			:= .T.  as logical
+    Local lUnderline	:= .T.  as logical
+    Local lItalic	    := .T.  as logical
+    Local cTitulo               as character
+    Local aDescri       := {}
+    Local nTotImp :=0
+    Local nTotSImp := 0
+    Local nAliqICM  := 0
+	Local nValICM   := 0
+    Local nLinIMG  := 0
+	
+	Local nAliPISCOF:= 0
+	Local nValPISCOF:= 0
+	Local nAliqISS  := 0
+	Local nValISS   := 0
+  
+    Local nCount
+    Local nContCont
+
+    Local cPathToPdf 
+    Local lImagem               as logical
+    Static oPrint               as object
+
+    Private oBrush := TBrush():New( , 12632256 )
+    Private oBrush2 := TBrush():New( , 10485760)
+    Private oBrush3 := TBrush():New( , 255)
+    Private oBrush4 := TBrush():New( , 16777215)
+    Private aDados            :={}
+    Private aItens            :={}
+      
+
+    //DEFINE A FONTE DAS LETRAS
+    private  oArial5   :=  TFont():New("Arial",,5,,!lBold,,,,,!lUnderline,!lItalic) 
+    private  oArial7   :=  TFont():New("Arial",,7,,!lBold,,,,,!lUnderline,!lItalic) 
+    private  oArial7B  :=  TFont():New("Arial",,7,,lBold,,,,,!lUnderline,!lItalic)   
+    private  oArial8   :=  TFont():New("Arial",,8,,!lBold,,,,,!lUnderline,!lItalic) 
+    private  oArial9   :=  TFont():New("Arial",,9,,!lBold,,,,,!lUnderline,!lItalic)   
+    private  oArial9B  :=  TFont():New("Arial",,9,,lBold,,,,,!lUnderline,!lItalic)   
+    private  oArial10B :=  TFont():New("Arial",,10,,lBold,,,,,!lUnderline,!lItalic)   
+    private  oArial10  :=  TFont():New("Arial",,10,,!lBold,,,,,!lUnderline,!lItalic)   
+    private  oArial11  :=  TFont():New("Arial",,11,,!lBold,,,,,!lUnderline,!lItalic) 
+    private  oArial11B :=  TFont():New("Arial",,11,,lBold,,,,,!lUnderline,!lItalic)    
+    private  oArial12B :=  TFont():New("Arial",,12,,lBold,,,,,!lUnderline,!lItalic)   
+    private  oArial13B :=  TFont():New("Arial",,13,,lBold,,,,,!lUnderline,!lItalic) 
+    private  oArial15B :=  TFont():New("Arial",,15,,lBold,,,,,!lUnderline,!lItalic)   
+
+    lImagem:= MsgYesNo("Imprime com Imagem?", "Confirma?")
+    IIF(Select("TRB")!= 0, TRB->(DbCLoseArea()), )
+        beginsql Alias "TRB"
+            SELECT 
+                CJ_NUM,CJ_EMISSAO,CJ_VALIDA,CJ_FRETE,CJ_CONDPAG,A1_END AS ENDER, CJ_TPFRETE, CJ_DESPESA, CJ_SEGURO, CJ_DESC1, CJ_LOJAENT, CJ_DESCONT, CJ_FRETAUT, CJ_PDESCAB, CJ_CLIENTE, CJ_ZVERSAO,
+                A1_BAIRRO AS BAIRRO ,A1_MUN AS MUN,A1_EST AS EST,A1_CEP AS CEP,A1_NOME AS NOME,A1_INSCR AS INSCR, A1_CGC AS CGC,A1_TEL AS TEL, 
+                A1_DDD AS DDD,A1_TIPO AS TIPO,A1_COD AS COD,A1_LOJA AS LOJA, 'SA1' AS CLIENTE, A1_VEND AS VENDEDOR, A1_EMAIL AS EMAIL, 
+                CK_ITEM,CK_NUM,CK_DESCRI, CK_PRODUTO, CK_QTDVEN, CK_PRCVEN, CK_VALOR, CK_ENTREG,CK_TES, CK_VALDESC, CK_PRUNIT, CK_LOCAL, CK_ZDCOMP , CK_ZNCM, CK_ZCAVIDA, CK_ZALICMS, CK_ALPISCO, CK_ZALISSQ, CK_ZICMS, CK_ZPISCOF, CK_ZISSQN,CK_ZIMPIMG, CK_ZTOTIMP,
+                B1_DESC, B1_POSIPI,B1_UM,B1_IPI 
+
+                FROM %Table:SCJ% SCJ 
+						INNER JOIN %Table:SCK% SCK ON SCK.CK_FILIAL = SCJ.CJ_FILIAL  
+							AND SCK.CK_NUM = SCJ.CJ_NUM AND NVL(SCK.D_E_L_E_T_, ' ') = ' '
+						INNER JOIN %Table:SA1% SA1 ON SA1.A1_COD = SCJ.CJ_CLIENTE 
+							AND SA1.A1_LOJA = SCJ.CJ_LOJA  AND NVL(SA1.D_E_L_E_T_, ' ') = ' '
+						INNER JOIN %Table:SB1% SB1 ON SB1.B1_COD = SCK.CK_PRODUTO 
+                            AND NVL(SB1.D_E_L_E_T_, ' ') = ' '
+
+                WHERE SCJ.CJ_FILIAL =  %Exp:xFilial("SCJ")%
+                    AND NVL(SCJ.D_E_L_E_T_, ' ') = ' '
+    
+                    AND SCJ.CJ_NUM = %Exp:SCJ->CJ_NUM%
+
+		UNION ALL 
+		SELECT 
+            CJ_NUM,CJ_EMISSAO,CJ_VALIDA,CJ_FRETE,CJ_CONDPAG,US_END AS ENDER, CJ_TPFRETE, CJ_DESPESA, CJ_SEGURO, CJ_DESC1, CJ_LOJAENT, CJ_DESCONT, CJ_FRETAUT, CJ_PDESCAB, CJ_CLIENTE, CJ_ZVERSAO,
+            US_BAIRRO AS BAIRRO,US_MUN AS MUN ,US_EST AS EST,US_CEP AS CEP, US_NOME AS NOME,US_INSCR AS INSCR,  US_CGC AS CGC,US_TEL AS TEL, 
+            US_DDD AS DDD, US_TIPO AS TIPO,US_COD AS COD, US_LOJA AS LOJA, 'SUS' AS CLIENTE, US_VEND AS VENDEDOR, US_EMAIL AS EMAIL, 
+			CK_ITEM,CK_NUM,CK_DESCRI, CK_PRODUTO, CK_QTDVEN, CK_PRCVEN, CK_VALOR, CK_ENTREG , CK_TES, CK_VALDESC, CK_PRUNIT, CK_LOCAL,  CK_ZDCOMP , CK_ZNCM, CK_ZCAVIDA, CK_ZALICMS, CK_ALPISCO, CK_ZALISSQ, CK_ZICMS, CK_ZPISCOF, CK_ZISSQN,CK_ZIMPIMG, CK_ZTOTIMP,
+			B1_DESC, B1_POSIPI,B1_UM,B1_IPI 
+
+			FROM %Table:SCJ% SCJ 
+						INNER JOIN %Table:SCK% SCK ON SCK.CK_FILIAL = SCJ.CJ_FILIAL  
+							AND SCK.CK_NUM = SCJ.CJ_NUM AND NVL(SCK.D_E_L_E_T_, ' ') = ' '
+						INNER JOIN %Table:SUS% SUS ON SUS.US_COD = SCJ.CJ_PROSPE 
+							AND SUS.US_LOJA = SCJ.CJ_LOJPRO AND NVL(SUS.D_E_L_E_T_, ' ') = ' '
+						INNER JOIN %Table:SB1% SB1 ON SB1.B1_COD = SCK.CK_PRODUTO 
+                            AND NVL(SB1.D_E_L_E_T_, ' ') = ' '
+
+			WHERE SCJ.CJ_FILIAL = %Exp:xFilial("SCJ")%
+                AND NVL(SCJ.D_E_L_E_T_, ' ') = ' ' 
+                
+                AND SCJ.CJ_NUM = %Exp:SCJ->CJ_NUM%
+
+            ORDER BY CK_NUM,CK_ITEM, CK_PRODUTO
+        endSQL
+	    //DEFINE OS PARAMETROS DO FMWSPRINTER
+
+        ProcRegua(TRB->(RecCount()))
+	    count to nCount
+	    nContCont := nCount
+	    TRB->(dbGoTop())
+
+        If TRB->(Eof())
+		    Alert('Sem informacoes para serem impressas!')
+		    TRB->(dbCloseArea())
+		    Return
+	    EndIf
+
+	    dbSelectArea("SE4")
+	    dbSetOrder(1)
+	    MsSeek(xFilial("SE4")+TRB->CJ_CONDPAG)
+	    dbSelectArea("SA1")
+	    dbSetOrder(1)
+	    MsSeek(xFilial("SA1")+TRB->CJ_CLIENTE+TRB->CJ_LOJAENT)
+	    dDataCnd:=TRB->CJ_EMISSAO
+        dbSelectArea("SB1")
+	    dbSetOrder(1)
+
+        cNumero := TRB->CJ_NUM
+
+        cTitulo:=  "OS-"+Day2Str(Date())+Month2Str(Date())+Year2Str(Date())+"-"+replace(cvaltochar(time()),":","")  //NOME QUE SERÁ SALVO O ARQUIVO
+        oPrint := FWMsPrinter():New(cTitulo,6,.F., ,.T.)
+        oPrint:SetLandscape()
+        oPrint:cPathPDF :=  cPathToPdf 
+        cDiretorio := oPrint:cPathPDF
+        oPrint:SetPaperSize(DMPAPER_A4) //TAMANHO DA FOLHA
+        oPrint:SetMargin(60, 60, 60, 60) //MARGEM
+        ::numPages := "1"
+        ::STARTBOX  :=40
+        ::MAXBOX_LIN := 595
+        ::LIN :=40
+        ::COL := 10
+        ::COL2 :=200
+        ::COL3 :=500
+        ::CABEC_COL  := 10
+        ::CABEC_COL2 :=230
+        ::CABEC_COL3 :=400
+        ::STARTLINE  :=5
+        ::ENDLINE    :=800
+        ::ITEM_COL  :=10
+        ::ITEM_COL2  :=60
+        ::ITEM_COL3  :=130
+        ::ITEM_COL4  :=350
+        ::ITEM_COL5  :=450
+        ::ITEM_COL6  :=500
+        ::ITEM_COL7  :=550
+        ::ITEM_COL8  :=600
+        ::ITEM_COL9 :=650
+        ::ITEM_COL10 :=700
+        ::ITEM_COL11 :=750
+
+        oPrint:StartPage()
+        ::PrintCabec(nX)
+
+        ::LIN +=30
+        ::STARTBOX:=::LIN          
+        oPrint:Line( ::LIN, ::STARTLINE, ::LIN, 450 )
+        oPrint:Line( ::LIN, 460, ::LIN, ::ENDLINE )
+        ::LIN+=3
+        oPrint:SayAlign(::LIN,::ITEM_COL2,ALLTRIM(SA1->A1_NOME),oArial12B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL5+20,"Prazo de Entrega",oArial9,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL7,ALLTRIM(SCJ->CJ_ZPRAZO),oArial9,250 , 14,, 0, 0 )
+        ::LIN+=15
+        oPrint:SayAlign(::LIN,::ITEM_COL2,"CNPJ: "+TRANSFORM(SA1->A1_CGC,"@R 99.999.999/9999-99")+" Ins. Estadual: "+SA1->A1_INSCR,oArial9,250 , 14,, 0, 0 )
+        ::LIN+=8
+        oPrint:SayAlign(::LIN,::ITEM_COL2,"Endereço: "+alltrim(SA1->A1_END),oArial9,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL5+20,"Validade",oArial9,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL7,dtoc(SCJ->CJ_VALIDA),oArial9,250 , 14,, 0, 0 )
+        ::LIN+=8
+        oPrint:SayAlign(::LIN,::ITEM_COL2,"CEP: "+SA1->A1_CEP +" "+alltrim(SA1->A1_MUN)+" ("+SA1->A1_EST+") Bairro: "+SA1->A1_BAIRRO,oArial9,250 , 14,, 0, 0 )
+        ::LIN+=8
+        oPrint:SayAlign(::LIN,::ITEM_COL2,"FONE: "+SA1->A1_TEL,oArial9,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL5+20,"Forma de Pagamento",oArial9,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL7,ALLTRIM(SCJ->CJ_ZDCOND),oArial9,250 , 14,, 0, 0 )
+
+        ::LIN+=8
+        SU5->(DBSETORDER(1))
+        SU5->(MSSEEK(FWXFILIAL("SU5")+SCJ->CJ_ZCONCLI))
+        oPrint:SayAlign(::LIN,::ITEM_COL2,"E-mail: "+SU5->U5_EMAIL,oArial9,250 , 14,, 0, 0 )
+     
+        ::LIN+=8
+        oPrint:SayAlign(::LIN,::ITEM_COL2,"Endereço para correspondência: "+ALLTRIM(SA1->A1_ENDCOB),oArial9,250 , 14,, 0, 0 )
+
+         oPrint:SayAlign(::LIN,::ITEM_COL5+20,"Frete",oArial9,250 , 14,, 0, 0 )
+        if SCJ->CJ_TPFRETE =="C"
+            oPrint:SayAlign(::LIN,::ITEM_COL7,"( X ) CIF    (  ) FOB",oArial9,250 , 14,, 0, 0 )
+        elseif SCJ->CJ_TPFRETE =="F"
+            oPrint:SayAlign(::LIN,::ITEM_COL7,"(  ) CIF    ( X ) FOB",oArial9,250 , 14,, 0, 0 )
+        elseif SCJ->CJ_TPFRETE == "T"
+		    oPrint:SayAlign(::LIN,::ITEM_COL7,"Por Conta Terceiros",oArial9,250 , 14,, 0, 0 )
+	    elseif SCJ->CJ_TPFRETE == "S"
+		    oPrint:SayAlign(::LIN,::ITEM_COL7,"Sem Frete",oArial9,250 , 14,, 0, 0 )
+	    elseif SCJ->CJ_TPFRETE == "R"
+		    oPrint:SayAlign(::LIN,::ITEM_COL7,"Por Conta Remetente",oArial9,250 , 14,, 0, 0 )
+	    elseif SCJ->CJ_TPFRETE == "D"
+		    oPrint:SayAlign(::LIN,::ITEM_COL7,"Por Conta Destinatário",oArial9,250 , 14,, 0, 0 )
+	    endIf
+        ::LIN+=16
+        nLinBKP := ::LIN+=8
+        oPrint:SayAlign(::LIN,::ITEM_COL5+20,"Impostos ",oArial9,250 , 14,, 0, 0 )
+        
+        ::LIN+=12
+        oPrint:SayAlign(::LIN,::ITEM_COL,"Contato",oArial9,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL2,SU5->U5_CONTAT,oArial9B,250 , 14,, 0, 0 )
+        
+        ::LIN+=15
+        oPrint:Line( ::LIN, ::STARTLINE, ::LIN, 450 )
+        oPrint:Line( ::STARTBOX,::STARTLINE  , ::LIN,::STARTLINE  )
+        oPrint:Line(::STARTBOX,450 , ::LIN,450   )
+        oPrint:Line( ::LIN, 460, ::LIN, ::ENDLINE )
+        oPrint:Line( ::STARTBOX,460  , ::LIN,460  )
+        oPrint:Line(::STARTBOX,::ENDLINE , ::LIN,::ENDLINE   )
+        ::LIN+=4
+        oPrint:fillRect( {::LIN, 5,::LIN+7,  ::ENDLINE }, oBrush3 )
+        oPrint:fillRect( {::LIN+3, 5,::LIN+10,  ::ITEM_COL4 }, oBrush2 )
+        oPrint:fillRect( {::LIN+3, ::ITEM_COL4,::LIN+10,  ::ENDLINE }, oBrush4 )
+        oPrint:fillRect( {::LIN+7, 0,::LIN+14,  ::ENDLINE }, oBrush4 )
+        ::LIN+=10
+
+        oPrint:SayAlign(::LIN,::ITEM_COL,"Item",oArial9B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL2,"Produto/Serviço",oArial9B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL3,"Descrição Produto/Serviço",oArial9B,250 , 14,, 0, 0 )
+
+        oPrint:SayAlign(::LIN,::ITEM_COL4-80,"Descrição Complementar",oArial9B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL4+30,"NCM",oArial9B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL5,"Cavidades",oArial9B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL6,"Quantidade",oArial9B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL8-30,"Vlr.Unitário",oArial9B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL9-20,"Valor Total C/Impostos",oArial9B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL11-20,"Vlr.Total S/Impostos",oArial9B,250 , 14,, 0, 0 )
+            
+        ::LIN+=10
+
+        SCK->(DBSETORDER(1))
+
+        TRB->(dbGoTop())
+	    While !TRB->(EoF())
+        
+            //Impressão do conteúdo dos itens SCK
+            oPrint:SayAlign(::LIN,::ITEM_COL,ALLTRIM(TRB->CK_ITEM),oArial9,250 , 14,, 0, 0 )
+            oPrint:SayAlign(::LIN,::ITEM_COL2,ALLTRIM(TRB->CK_PRODUTO),oArial9,250 , 14,, 0, 0 )
+
+            nLinBKP1 := ::LIN  
+            SCK->(MSSEEK(FWXFILIAL("SCK")+TRB->CK_NUM + TRB->CK_ITEM + TRB->CK_PRODUTO))
+            cMemo := ALLTRIM(SCK->CK_ZDCOMP)
+            IF !Empty(cMemo)
+                nMemCount := MlCount(cMemo,30)
+				For nX	:= 1 To nMemCount
+				    oPrint:SayAlign(::LIN,::ITEM_COL4-80,AllTrim( MemoLine(cMemo,30,nX)),oArial9,250 , 14,, 0, 0 )
+                    ::LIN+=10
+                    ::validPage(nX)
+				Next nX
+            EndIf
+            nLinMemo:= ::LIN
+
+            ::LIN := nLinBKP1
+            oPrint:SayAlign(::LIN,::ITEM_COL4+30,ALLTRIM(TRB->CK_ZNCM),oArial9,250 , 14,, 0, 0 )
+            oPrint:SayAlign(::LIN,::ITEM_COL5,ALLTRIM(TRB->CK_ZCAVIDA),oArial9,250 , 14,, 0, 0 )
+            oPrint:SayAlign(::LIN,::ITEM_COL6,ALLTRIM(Transform(TRB->CK_QTDVEN,PesqPict( "SCK", "CK_QTDVEN" ))),oArial9,250 , 14,, 0, 0 )
+            oPrint:SayAlign(::LIN,::ITEM_COL8-30,ALLTRIM(Transform(TRB->CK_PRCVEN,PesqPict( "SCK", "CK_PRCVEN" ))),oArial9,250 , 14,, 0, 0 )
+            oPrint:SayAlign(::LIN,::ITEM_COL9-20,ALLTRIM(Transform(TRB->CK_VALOR,PesqPict( "SCK", "CK_VALOR" ))),oArial9B,250 , 14,, 0, 0 )
+            oPrint:SayAlign(::LIN,::ITEM_COL11-20,ALLTRIM(Transform(TRB->CK_ZTOTIMP,PesqPict( "SCK", "CK_ZTOTIMP" ))),oArial9,250 , 14,, 0, 0 )
+
+            if lImagem 
+		        If File(TRB->CK_ZIMPIMG)
+                    ::LIN += 10
+			        oPrint:SayBitmap(::LIN,::ITEM_COL,alltrim(TRB->CK_ZIMPIMG),100,60)
+                    ::LIN += 50
+		        EndIf
+            nLinIMG := ::LIN
+	        Endif
+
+            ::LIN := nLinBKP1
+            
+            //Imprimo a descrição por ultimo por causa da quebra
+            aDescri := _Msg(ALLTRIM(TRB->CK_DESCRI),28)
+            
+            For nX := 1 to len(aDescri)
+                oPrint:SayAlign(::LIN,::ITEM_COL3,aDescri[nX],oArial9,250 , 14,, 0, 0 )
+                ::LIN+=10
+            Next
+            nLinDesc := ::LIN
+
+            ::LIN := Max(Max(nLinIMG, nLinDesc), nLinMemo)
+
+            ::LIN+=15
+   
+
+            oPrint:Line( ::LIN, ::STARTLINE, ::LIN, ::ENDLINE )
+            ::validPage(nX)
+
+            //IMPOSTOS
+            nTotSImp    += TRB->CK_VALOR
+            nTotImp     += TRB->CK_ZTOTIMP
+            nAliqICM    := TRB->CK_ZALICMS
+            nValICM     += TRB->CK_ZICMS
+            nAliPISCOF  := TRB->CK_ALPISCO
+            nValPISCOF  += TRB->CK_ZPISCOF
+            nAliqISS    := TRB->CK_ZALISSQ
+            nValISS     += TRB->CK_ZISSQN
+                        
+            TRB->(dbSkip())
+        end 
+       
+        if ::numPages == "1" 
+            //IMPRESSÃO DOS IMPOSTOS NO CABEÇALHO
+            oPrint:SayAlign(nLinBKP,::ITEM_COL7,"%ICMS R$ "+ALLTRIM(TRANSFORM(nValICM, PesqPict("SCK","CK_ZICMS"))) ,oArial9,250 , 14,, 0, 0 ) 
+            nLinBKP += 8 
+            oPrint:SayAlign(nLinBKP,::ITEM_COL7,"%PIS/COFINS ("+CVALTOCHAR(nAliPISCOF)+") R$ "+ALLTRIM(TRANSFORM(nValPISCOF, PesqPict("SCK","CK_ZPISCOF"))),oArial9,250 , 14,, 0, 0 ) 
+            nLinBKP += 8 
+            oPrint:SayAlign(nLinBKP,::ITEM_COL7,"%ISSQN ("+CVALTOCHAR(nAliqISS)+") R$ "+ALLTRIM(TRANSFORM(nValISS, PesqPict("SCK","CK_ZISSQN"))),oArial9,250 , 14,, 0, 0 ) 
+        endif
+
+        
+        ::LIN+=10
+        ::validPage(nX)
+        oPrint:fillRect( {::LIN, 5,::LIN+7,  ::ITEM_COL4 }, oBrush2 )
+        oPrint:fillRect( {::LIN+4, 5,::LIN+11,  ::ENDLINE }, oBrush3 )
+        oPrint:fillRect( {::LIN+6, 0,::LIN+13,  ::ENDLINE }, oBrush4 )
+        oPrint:fillRect( {::LIN+9, 5,::LIN+16,  ::ENDLINE }, oBrush3 )
+        oPrint:fillRect( {::LIN+12, 5,::LIN+19,  ::ITEM_COL4 }, oBrush2 )
+        oPrint:fillRect( {::LIN+12, ::ITEM_COL4,::LIN+19,  ::ENDLINE }, oBrush4 )
+        oPrint:fillRect( {::LIN+16,0,::LIN+23,  ::ENDLINE }, oBrush4 )
+        ::LIN+=15
+        ::validPage(nX)
+        ::STARTBOX:=::LIN  
+        oPrint:Line( ::LIN, 460, ::LIN, ::ENDLINE )
+        ::LIN+=3
+        ::validPage(nX)
+        oPrint:SayAlign(::LIN,::ITEM_COL8,"Valor com imposto",oArial11,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN+10,::ITEM_COL8,"R$ "+ALLTRIM(Transform(nTotSImp,PesqPict( "SCK", "CK_VALOR" ))),oArial13B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL10+15,"Valor sem imposto",oArial11,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN+10,::ITEM_COL10+20,"R$ "+ALLTRIM(Transform(nTotImp,PesqPict( "SCK", "CK_ZTOTIMP" ))),oArial13B,250 , 14,, 0, 0 )
+        oPrint:SayAlign(::LIN,::ITEM_COL,"Características Construitivas do(s) Molde(s)",oArial11B,250 , 14,, 0, 0 )
+        ::LIN+=10
+        ::validPage(nX)
+
+        cMemo := ALLTRIM(SCJ->CJ_CCONSTR)
+        IF !Empty(cMemo)
+            nMemCount := MlCount(cMemo,140)
+				For nX	:= 1 To nMemCount
+						oPrint:SayAlign(::LIN,::ITEM_COL2,AllTrim( MemoLine(cMemo,140,nX)),oArial9,250 , 14,, 0, 0 )
+                        ::LIN+=8
+                        ::validPage(nX)
+				Next nX
+        EndIf
+       
+        oPrint:Line( ::LIN, 460, ::LIN, ::ENDLINE )
+        oPrint:Line( ::STARTBOX,460  , ::LIN,460  )
+        oPrint:Line(::STARTBOX,::ENDLINE , ::LIN,::ENDLINE   )
+        
+        ::LIN+=12
+        ::validPage(nX)
+        oPrint:SayAlign(::LIN,::ITEM_COL,"Informações Complementares",oArial11B,250 , 14,, 0, 0 )  
+        ::LIN+=15
+        ::validPage(nX)
+        cMemo := ALLTRIM(SCJ->CJ_ZINFCOM)
+        IF !Empty(cMemo)
+            nMemCount := MlCount(cMemo,140)
+				For nX	:= 1 To nMemCount
+						oPrint:SayAlign(::LIN,::ITEM_COL2,AllTrim( MemoLine(cMemo,140,nX)),oArial9,250 , 14,, 0, 0 )
+                        ::LIN+=8
+                        ::validPage(nX)
+				Next nX
+        EndIf
+
+        oPrint:Preview() 
+return
+
+static method PrintCabec(nX) class BudgetReport
+    Local cLogo             := GetSrvProfString( "StartPath", ""  )   + "lgorc1.bmp" 
+    Local cLogo2            := GetSrvProfString( "StartPath", ""  )   + "lgorc2.bmp" 
+    ::STARTBOX:=::LIN          
+    oPrint:Line( ::LIN, ::STARTLINE, ::LIN, 450 )
+    oPrint:Line( ::LIN, 460, ::LIN, ::ENDLINE )
+    
+    oPrint:SayBitmap(::LIN+10,10,cLogo,80,50)
+    oPrint:SayBitmap(::LIN+5,380,cLogo2,60,60)
+    oPrint:SayAlign(::LIN,::ITEM_COL3,SM0->M0_NOMECOM,oArial12B,250 , 14,, 0, 0 )
+    oPrint:fillRect( {42, 462,::LIN+40,  ::ENDLINE-2 }, oBrush )
+    oPrint:SayAlign(::LIN,::ITEM_COL7 ,"Proposta Nr.",oArial11B,250 , 14,, 0, 0 )
+    oPrint:SayAlign(::LIN,::ITEM_COL11-10,SCJ->CJ_NUM,oArial15B,250 , 14,, 0, 0 )
+    
+    ::LIN+=10
+    oPrint:SayAlign(::LIN,::ITEM_COL7+30,"Pág "+::numPages,oArial8,60 , 40,, 0, 0 )
+    oPrint:SayAlign(::LIN+5,::ITEM_COL11-10,"Versão: "+SCJ->CJ_ZVERSAO,oArial10,250 , 14,, 0, 0 )
+    oPrint:Line( ::LIN+16, 460, ::LIN+16, ::ENDLINE )
+    ::LIN+=15
+    oPrint:SayAlign(::LIN+2,::ITEM_COL7 ,"Data",oArial11B,250 , 14,, 0, 0 )
+    oPrint:SayAlign(::LIN+2,::ITEM_COL11,DTOC(SCJ->CJ_EMISSAO),oArial11B,250 , 14,, 0, 0 )
+    oPrint:Line( ::LIN+16, 460, ::LIN+16, ::ENDLINE )
+    oPrint:SayAlign(::LIN,::ITEM_COL3,"CNPJ: "+SM0->M0_CGC+" Ins. Estadual: "+SM0->M0_INSC,oArial9,250 , 14,, 0, 0 )
+    ::LIN+=8
+    oPrint:SayAlign(::LIN,::ITEM_COL3,"Ins. Municipal: "+SM0->M0_INSCM,oArial9,250 , 14,, 0, 0 )
+    ::LIN+=8
+    oPrint:SayAlign(::LIN,::ITEM_COL3,"Endereço: "+ SM0->M0_ENDENT,oArial9,250 , 14,, 0, 0 )
+    ::LIN+=8
+    oPrint:SayAlign(::LIN,::ITEM_COL3,"CEP: "+SM0->M0_CEPENT+" "+SM0->M0_CIDENT +" "+SM0->M0_ESTENT+" Bairro: "+SM0->M0_BAIRENT,oArial9,250 , 14,, 0, 0 )
+    oPrint:SayAlign(::LIN,::ITEM_COL5+20,"Contato",oArial11B,250 , 14,, 0, 0 )
+    DBSelectArea("SU5")
+    SU5->(DBSETORDER(1))
+    SU5->(MSSEEK(FWXFILIAL("SU5")+SCJ->CJ_ZRESPOR))
+    oPrint:SayAlign(::LIN,::ITEM_COL7,ALLTRIM(SU5->U5_CONTAT),oArial11,250 , 14,, 0, 0 )
+    ::LIN+=8
+    oPrint:SayAlign(::LIN,::ITEM_COL3,"FONE: "+SM0->M0_TEL,oArial9,250 , 14,, 0, 0 )
+
+    DBSelectArea("SUM")
+    SUM->(DBSETORDER(1))
+    SUM->(MSSEEK(FWxFilial("SUM")+SU5->U5_FUNCAO))
+    oPrint:SayAlign(::LIN+2,::ITEM_COL7,ALLTRIM(SUM->UM_DESC),oArial11,250 , 14,, 0, 0 )
+    ::LIN+=8
+    oPrint:SayAlign(::LIN,::ITEM_COL3,"E-mail: gama@gama.ind.br",oArial9,250 , 14,, 0, 0 )
+    oPrint:SayAlign(::LIN+2,::ITEM_COL7,SU5->U5_EMAIL,oArial11,250 , 14,, 0, 0 )
+    ::LIN+=8
+    oPrint:SayAlign(::LIN,::ITEM_COL3,"Endereço para correspondência: CAIXA POSTAL nr. 8145 - CEP: 95034-970",oArial9,250 , 14,, 0, 0 )
+    
+    dbselectarea("AGB")
+    AGB->(DBSetOrder(1))
+    AGB->(MSSEEK(FWXFILIAL("AGB")+"SU5"+SCJ->CJ_ZRESPOR))
+    oPrint:SayAlign(::LIN+4,::ITEM_COL7,"|"+AGB->AGB_DDD+"| "+AGB->AGB_TELEFO,oArial11,250 , 14,, 0, 0 )
+    
+    ::LIN+=25
+    oPrint:Line( ::LIN, ::STARTLINE, ::LIN, 450 )
+    oPrint:Line( ::STARTBOX,::STARTLINE  , ::LIN,::STARTLINE  )
+    oPrint:Line(::STARTBOX,450 , ::LIN,450   )
+
+    oPrint:Line( ::LIN, 460, ::LIN, ::ENDLINE )
+    oPrint:Line( ::STARTBOX,460  , ::LIN,460  )
+    oPrint:Line(::STARTBOX,::ENDLINE , ::LIN,::ENDLINE   )
+    ::LIN+=4
+    oPrint:fillRect( {::LIN, 5,::LIN+7,  ::ITEM_COL4 }, oBrush2 )
+    oPrint:fillRect( {::LIN+4, 5,::LIN+11,  ::ENDLINE }, oBrush3 )
+    oPrint:fillRect( {::LIN+7, 0,::LIN+14,  ::ENDLINE }, oBrush4 )
+return
+
+static method validPage(nX) class BudgetReport
+Local lRet := .F.
+if ::LIN+30 > ::MAXBOX_LIN
+    //oPrint:Line( ::STARTBOX,::STARTLINE  , ::LIN,::STARTLINE  )
+    //oPrint:Line(::STARTBOX,::ENDLINE , ::LIN,::ENDLINE   )
+    //oPrint:Line( ::LIN, ::STARTLINE, ::LIN, ::ENDLINE )
+    
+    ::numPages:=soma1(::numPages)
+    //oPrint:Line( ::STARTBOX, ::STARTLINE , ::LIN, ::STARTLINE  )
+    //oPrint:Line(::STARTBOX,::ENDLINE , ::LIN,::ENDLINE   )
+    oPrint:SayAlign(::LIN+5,::COL3-50,"Continua na Próxima Página >>>",oArial8,200, 40,, 0, 0 )
+    ::LIN :=30
+    ::STARTBOX:=::LIN
+    oPrint:EndPage()
+    oPrint:StartPage()
+    ::PrintCabec(nX)
+    ::LIN +=30
+    lRet :=.T.
+endif
+
+return lRet
+
+
+Static Function _MSG(_cObs, _nTam)
+
+	Local _aMsg    := {}
+	Local _i       := 0
+
+	_cObs          := StrTran(_cObs, " ", ";")
+	Do While At(";;", _cObs) != 0
+		_cObs          := StrTran(_cObs, ";;", ";")
+	EndDo
+
+	_aObs          := {}
+	Do While Len(_cObs) > 0
+		If At(";", _cObs) != 0
+			aadd(_aObs, SubStr(_cObs, 1, At(";", _cObs) -1))
+			_cObs          := Stuff(_cObs, 1, At(";", _cObs), "")
+		Else
+			aadd(_aObs, AllTrim(_cObs))
+			_cObs          := ""
+		EndIf
+	EndDo
+
+	_cObs          := ""
+	For _i         := 1 To Len(_aObs)
+		If Len(_cObs + cValToChar(_aObs[_i])) > _nTam
+			aadd(_aMsg, Padr(_cObs,_nTam))
+			_cObs          := _aObs[_i] + " "
+		Else
+			_cObs          := _cObs + _aObs[_i] + " "
+		EndIf
+	Next _i
+
+	If AllTrim(_cObs) != ""
+		aadd(_aMsg, Padr(_cObs,_nTam))
+	EndIf
+
+Return _aMsg

@@ -1,0 +1,4 @@
+#INCLUDE 'totvs.ch'
+#INCLUDE "fwmvcdef.ch"
+
+PUBLISH USER MODEL REST NAME MATA010 source MATA010
