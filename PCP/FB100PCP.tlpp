@@ -1,0 +1,893 @@
+
+#INCLUDE "RWMAKE.CH"
+#Include "TOTVS.ch"
+
+User Function FB100PCP()
+
+    Private lRecursiv := .T. AS Logical
+    Private cBanco := TCGetDB()
+
+    While lRecursiv
+        IniciaProc()
+    EndDo
+
+Return
+
+Static Function IniciaProc()
+
+Local cNumOP := SC2->C2_NUM AS Character
+Local cQuery := "" AS Character
+Local aAreaSD4 := SD4->(GetArea()) AS Character
+Local aAreaSG1 := SG1->(GetArea()) AS Character
+Local aAreaSB1 := SB1->(GetArea()) AS Character
+Local aAreaSC2 := SC2->(GetArea()) AS Character
+Local aSD4 := {} AS Array
+Local aSG1 := {} AS Array
+Local aExibDif := {} AS Array
+Local lEmpBN := SuperGetMv("MV_EMPBN",.F.,.F.) AS Logical
+Local lAdicSG1 := .T. AS Logical
+Local lRemSC2 := .T. AS Logical
+Local cChvRem := "" AS Character
+Local aRegSG1E := {} AS Array
+
+DbSelectArea("SB1")
+SB1->(DbSetOrder(1))
+
+DbSelectArea("SD4")
+SD4->(DbSetOrder(2))
+
+DbSelectArea("SG1")
+SG1->(DbSetOrder(1))
+
+DbSelectArea("SC2")
+SC2->(DbSetOrder(1))
+
+//Buscar Itens das OPs Intermediarias e validar se estão na estrutura ainda
+cQuery := "SELECT SC2.C2_FILIAL, SC2.C2_NUM, SC2.C2_ITEM, SC2.C2_SEQUEN, SC2.C2_PRODUTO, SC2.C2_SEQPAI, SC2.C2_QUANT, SC2.C2_QUJE "
+cQuery += "FROM " + RetSqlName("SC2") + " SC2 WHERE SC2.D_E_L_E_T_ = '' AND SC2.C2_FILIAL = '" + xFilial("SC2") + "' AND SC2.C2_NUM = '" + cNumOP + "' ORDER BY C2_SEQUEN DESC "
+cQuery := ChangeQuery(cQuery)
+MPSysOpenQuery(cQuery, "_SC2")
+
+DbSelectArea("_SC2")
+_SC2->(DbgoTop())
+While _SC2->(!EOF())
+    aRegSG1E := {} 
+    If !Empty(_SC2->C2_SEQPAI)
+        lRemSC2 := .T.
+        If SC2->(DbSeek(_SC2->C2_FILIAL + _SC2->C2_NUM + _SC2->C2_ITEM + _SC2->C2_SEQPAI))
+            If SG1->(DbSeek(SC2->C2_FILIAL + SC2->C2_PRODUTO))
+                While SG1->(!EOF()) .And. SG1->G1_FILIAL == SC2->C2_FILIAL .And. SG1->G1_COD == SC2->C2_PRODUTO
+                    If SG1->G1_COMP == _SC2->C2_PRODUTO .And. aScan(aRegSG1E, SG1->(Recno())) == 0 
+                        lRemSC2 := .F.
+                        AADD(aRegSG1E,SG1->(Recno()))
+                    EndIf
+                    SG1->(DbSkip())
+                EndDo
+            EndIf
+        EndIf
+        If lRemSC2           
+            cChvRem += _SC2->C2_FILIAL + _SC2->C2_NUM + _SC2->C2_ITEM + _SC2->C2_SEQUEN + "|"
+            AAdd(aExibDif , { _SC2->C2_NUM, _SC2->C2_ITEM, _SC2->C2_SEQUEN, _SC2->C2_PRODUTO, "", 0, _SC2->C2_QUANT, 0, 0, "", "6" })
+        EndIf
+    EndIf
+    _SC2->(DbSkip())
+EndDo
+
+_SC2->(DbCloseArea())
+                                                                                                              
+//Buscar sequencias da ordem de produção.
+cQuery := "SELECT SC2.C2_FILIAL, SC2.C2_NUM, SC2.C2_ITEM, SC2.C2_SEQUEN, SC2.C2_PRODUTO, SC2.C2_QUANT, SC2.C2_QUJE "
+cQuery += "FROM " + RetSqlName("SC2") + " SC2 WHERE SC2.D_E_L_E_T_ = '' AND SC2.C2_FILIAL = '" + xFilial("SC2") + "' AND SC2.C2_NUM = '" + cNumOP + "' "
+cQuery += "AND SC2.C2_FILIAL + SC2.C2_NUM + SC2.C2_ITEM + SC2.C2_SEQUEN NOT IN " + FormatIn(AllTrim(cChvRem),"|") + " "
+cQuery += "ORDER BY C2_SEQUEN DESC "
+
+If Upper(TcGetDb()) $ "ORACLE,POSTGRES,DB2,INFORMIX"
+    cQuery := StrTran(cQuery, "+", "||")
+Endif
+
+cQuery := ChangeQuery(cQuery)
+MPSysOpenQuery(cQuery, "_SC2")
+
+While _SC2->(!EOF())
+    aSD4 := {} 
+    aSG1 := {}
+    lAdicSG1 := .T.
+
+    If SD4->(DbSeek(_SC2->C2_FILIAL + _SC2->C2_NUM + _SC2->C2_ITEM +_SC2->C2_SEQUEN))
+        While SD4->(!EOF()) .And. _SC2->C2_FILIAL  == SD4->D4_FILIAL .And. Alltrim(_SC2->(C2_NUM + C2_ITEM + C2_SEQUEN)) == Alltrim(SD4->D4_OP)
+            AADD(aSD4,{SD4->D4_COD, SD4->D4_QUANT, "", SD4->(Recno()), _SC2->C2_SEQUEN})
+            SD4->(DbSkip()) 
+        EndDo
+    EndIf
+
+    If SG1->(DbSeek(_SC2->C2_FILIAL + _SC2->C2_PRODUTO))
+        While SG1->(!EOF()) .And. SG1->G1_COD == _SC2->C2_PRODUTO
+            lAdicSG1 := .T.
+            If !lEmpBN 
+                SB1->(DbSeek(SG1->G1_FILIAL + SG1->G1_COMP))
+                If SB1->B1_TIPO == "BN"
+                    lAdicSG1 := .F.
+                EndIf
+            EndIf
+            If lAdicSG1
+                AADD(aSG1,{SG1->G1_COMP, SG1->G1_QUANT * _SC2->C2_QUANT, "", SG1->(Recno()), _SC2->C2_SEQUEN})
+            EndIf
+            SG1->(DbSkip())
+        EndDo
+    EndIf
+
+    fAnaliseDif(aSG1,aSD4,@aExibDif)
+
+    _SC2->(DbSkip())
+EndDo
+
+fTelaDif(@aExibDif)
+
+_SC2->(DbCloseArea())
+
+RestArea(aAreaSB1)
+RestArea(aAreaSG1)
+RestArea(aAreaSD4)
+RestArea(aAreaSC2)
+Return
+
+Static Function fAnaliseDif(aASG1, aASD4, aResult)
+
+Local aDiffASG1 := {} AS Array // existe no ASG1 mas não no ASD4
+Local aDiffASD4 := {} AS Array // existe no ASD4 mas não no ASG1
+Local aQtDif    := {} AS Array // existe nos dois mas qtd divergente
+Local aQtCorret := {} AS Array // Itens corretos
+Local nI, nJ, nX AS Numeric 
+Local lFound AS Logical
+Local cFinaliz  := "N" AS Character 
+Local aSG1TMP   := SG1->(GetArea()) AS Character
+Local cQuery2   := "" AS Character
+Local aEstrtur  := {{"",0,0}} AS Array
+Local aEstrExc  := {{"",0,0}} AS Array
+Local nQtdEstr  := 0 AS Numeric
+Local nPosEstr  := 0 AS Numeric
+Local lCriaOP   := .F. AS Logical
+Local lRemoveOP := .F. AS Logical
+
+aASG1 := aSort(aASG1 ,,, { |x,y| x[1] + cValToChar(x[2]) < y[1] + cValToChar(y[2])})
+aASD4 := aSort(aASD4 ,,, { |x,y| x[1] + cValToChar(x[2]) < y[1] + cValToChar(y[2])})
+
+If _SC2->C2_QUJE > 0 
+    cFinaliz := "S"
+EndIf
+
+// Verifica itens do ASG1
+For nI := 1 To Len(aASG1)
+    lFound := .F.
+    For nJ := 1 To Len(aASD4)
+        If aASG1[nI][1] == aASD4[nJ][1] .And. Empty(aASG1[nI][3]) .And. Empty(aASD4[nJ][3])
+            lFound := .T.
+
+            If Round(aASG1[nI][2],2) == Round(aASD4[nJ][2],2)
+                AAdd(aQtCorret , {_SC2->C2_NUM, _SC2->C2_ITEM, _SC2->C2_SEQUEN, _SC2->C2_PRODUTO, aASG1[nI][1], aASG1[nI][2], aASD4[nJ][2], aASG1[nI][4], aASD4[nJ][4], cFinaliz, "1" })
+            Else
+                // Quantidade divergente 
+                //Caso seja uma OP intermediaria
+                If SG1->(DbSeek(_SC2->C2_FILIAL + aASG1[nI][1]))
+                    AAdd(aQtDif , { _SC2->C2_NUM, _SC2->C2_ITEM, _SC2->C2_SEQUEN, _SC2->C2_PRODUTO, aASG1[nI][1], aASG1[nI][2], aASD4[nJ][2], aASG1[nI][4], aASD4[nJ][4], cFinaliz, "7" })
+                Else
+                    AAdd(aQtDif , { _SC2->C2_NUM, _SC2->C2_ITEM, _SC2->C2_SEQUEN, _SC2->C2_PRODUTO, aASG1[nI][1], aASG1[nI][2], aASD4[nJ][2], aASG1[nI][4], aASD4[nJ][4], cFinaliz, "2" })
+                EndIf
+            EndIf
+            aASG1[nI][3] := "OK"
+            aASD4[nJ][3] := "OK"
+            Exit
+        EndIf
+    Next
+
+    //Verifica se tem OP intermediaria para o item 
+    If SG1->(DbSeek(_SC2->C2_FILIAL + aASG1[nI][1]))
+        nQtdEstr := 0
+        lCriaOP  := .F.
+
+        For nX := 1 to Len(aASG1)
+            If aASG1[nI][1] == aASG1[nX][1]
+                nQtdEstr++
+            EndIf
+        Next
+
+        nPosEstr :=  aScan( aEstrtur, {|x| AllTrim(x[1]) == aASG1[nI][1] + aASG1[nI][5]} )
+        
+        If nPosEstr == 0
+            cQuery2 := "SELECT COUNT(SC2.C2_PRODUTO) AS CTDREG "
+            cQuery2 += "FROM " + RetSqlName("SC2") + " SC2 "
+            cQuery2 += "WHERE SC2.D_E_L_E_T_ = '' AND SC2.C2_FILIAL = '" + _SC2->C2_FILIAL + "' AND SC2.C2_NUM = '" + _SC2->C2_NUM + "' "
+            cQuery2 += "AND SC2.C2_PRODUTO = '" + aASG1[nI][1] + "' AND SC2.C2_SEQPAI = '" + aASG1[nI][5] + "' "
+            cQuery2 := ChangeQuery(cQuery2)
+            MPSysOpenQuery(cQuery2, "_SC2_2")
+
+            If nQtdEstr > _SC2_2->CTDREG
+                AADD(aEstrtur,{aASG1[nI][1] + aASG1[nI][5],nQtdEstr,_SC2_2->CTDREG})
+                lCriaOP := .T.
+                nPosEstr := Len(aEstrtur)
+            EndIf
+            _SC2_2->(DbCloseArea())
+        Else
+            If aEstrtur[nPosEstr][2] > aEstrtur[nPosEstr][3]
+                lCriaOP := .T.
+            EndIf
+        EndIf
+    EndIf
+
+    If !lFound
+        
+        //Verificar se cria recomendação de OP
+
+        If lCriaOP
+            AAdd(aDiffASG1, {_SC2->C2_NUM, _SC2->C2_ITEM, _SC2->C2_SEQUEN, _SC2->C2_PRODUTO, aASG1[nI][1],aASG1[nI][2], 0, aASG1[nI][4], 0, cFinaliz, "5" })
+            aEstrtur[nPosEstr][3]++
+        Else
+            //Não é substrutura, apenas pendencia de empenho
+            AAdd(aDiffASG1, {_SC2->C2_NUM, _SC2->C2_ITEM, _SC2->C2_SEQUEN, _SC2->C2_PRODUTO, aASG1[nI][1],aASG1[nI][2], 0, aASG1[nI][4], 0, cFinaliz, "3" })
+        EndIf
+        aASG1[nI][3] := "OK"
+        
+        RestArea(aSG1TMP)
+    EndIf
+Next
+
+// Verifica itens do ASD4
+For nI := 1 To Len(aASD4)
+    lFound := .F.
+    For nJ := 1 To Len(aASG1)
+        If aASD4[nI][1] == aASG1[nJ][1] .And. Empty(aASD4[nI][3]) .And. Empty(aASG1[nJ][3])
+            lFound := .T.
+            Exit
+        EndIf
+    Next
+
+    //Verifica se tem OP intermediaria para o item 
+    If SG1->(DbSeek(_SC2->C2_FILIAL + aASD4[nI][1]))
+        nQtdEstr := 0
+        lCriaOP  := .F.
+
+        For nX := 1 to Len(aASD4)
+            If aASD4[nI][1] == aASD4[nX][1]
+                nQtdEstr++
+            EndIf
+        Next
+
+        nPosEstr :=  aScan( aEstrExc, {|x| AllTrim(x[1]) == aASD4[nI][1] + aASD4[nI][5]} )
+        
+        If nPosEstr == 0
+            cQuery2 := "SELECT COUNT(SG1.G1_COMP) AS CTDREG "
+            cQuery2 += "FROM " + RetSqlName("SG1") + " SG1 "
+            cQuery2 += "WHERE SG1.D_E_L_E_T_ = '' AND SG1.G1_FILIAL = '" + _SC2->C2_FILIAL + "' "
+            cQuery2 += "AND SG1.G1_COD = '" + _SC2->C2_PRODUTO + "' AND SG1.G1_COMP = '" + aASD4[nI][1] + "' "
+            cQuery2 := ChangeQuery(cQuery2)
+            MPSysOpenQuery(cQuery2, "_SG1_2")
+
+            If nQtdEstr > _SG1_2->CTDREG
+                AADD(aEstrExc,{aASD4[nI][1] + aASD4[nI][5],nQtdEstr,_SG1_2->CTDREG})
+                lRemoveOP := .T.
+                nPosEstr := Len(aEstrExc)
+            EndIf
+            _SG1_2->(DbCloseArea())
+        Else
+            If aEstrExc[nPosEstr][2] > aEstrExc[nPosEstr][3]
+                lRemoveOP := .T.
+            EndIf
+        EndIf
+    EndIf
+
+    If !lFound .And. Empty(aASD4[nI][3])
+        If lRemoveOP
+            AAdd(aDiffASD4, { _SC2->C2_NUM, _SC2->C2_ITEM, _SC2->C2_SEQUEN, _SC2->C2_PRODUTO, aASD4[nI][1], 0, aASD4[nI][2], 0, aASD4[nI][4], cFinaliz, "4" })
+            aEstrExc[nPosEstr][3]++
+        Else
+            AAdd(aDiffASD4, { _SC2->C2_NUM, _SC2->C2_ITEM, _SC2->C2_SEQUEN, _SC2->C2_PRODUTO, aASD4[nI][1], 0, aASD4[nI][2], 0, aASD4[nI][4], cFinaliz, "4" })
+        EndIf
+       aASD4[nI][3] := "OK"
+    EndIf
+Next
+
+For nI := 1 To Len(aDiffASG1)
+    AAdd(aResult,aDiffASG1[nI])
+Next
+For nI := 1 To Len(aDiffASD4)
+    AAdd(aResult,aDiffASD4[nI])
+Next
+For nI := 1 To Len(aQtDif)
+    AAdd(aResult,aQtDif[nI])
+Next
+For nI := 1 To Len(aQtCorret)
+    AAdd(aResult,aQtCorret[nI])
+Next
+
+Return
+    
+Static Function fTelaDif(aArrayDad)
+    Local aArea := GetArea() AS Character
+    //Fontes
+    Local cFontUti    := "Tahoma" AS Character
+    //Local oFontAno    := TFont():New(cFontUti,,-38)
+    //Local oFontSub    := TFont():New(cFontUti,,-20)
+    //Local oFontSubN   := TFont():New(cFontUti,,-20,,.T.)
+    Local oFontBtn    := TFont():New(cFontUti,,-14)
+    Local bBlocoOk     := {|| lOk := .T., fConfirma()}
+    Local bBlocoCan    := {|| lOk := .F., fCancela()}
+    Local aOutrasAc    := {} AS Array
+    Local bBlocoIni    := {|| EnchoiceBar(oDlgGrp, bBlocoOk, bBlocoCan, , aOutrasAc)}
+
+    //Janela e componentes
+    Private oDlgGrp
+    Private oPanGrid
+    Private oGetGrid
+    Private aColunas := {} AS Array
+    Private cAliasTab := "TMPG1D4" AS Character
+    //Tamanho da janela
+    Private    aTamanho := MsAdvSize()
+    Private    nJanLarg := aTamanho[5] 
+    Private    nJanAltu := aTamanho[6]
+    
+    aAdd(aOutrasAc, {"BMP", {|| fMarkTod()}, "(Des) Marcar todos registros"})
+    aAdd(aOutrasAc, {"BMP", {|| fAtualiza()},"Atualizar"})
+
+    If(Select(cAliasTab) > 0)
+        (cAliasTab)->(DBCloseArea())
+    EndIf
+    //Cria a temporária
+    oTempTable := FWTemporaryTable():New(cAliasTab)
+        
+    //Adiciona no array das colunas as que serão incluidas (Nome do Campo, Tipo do Campo, Tamanho, Decimais)
+    aFields := {}
+    aAdd(aFields, {"FLAG_OK"    , "L",   1 , 0}) //Flag para marcação
+    aAdd(aFields, {"XXNUMERO"   , "C",   Len(CriaVar("C2_NUM")) , 0})
+    aAdd(aFields, {"XXITEM"     , "C",   Len(CriaVar("C2_ITEM")) , 0})
+    aAdd(aFields, {"XXSEQUEN"   , "C",   Len(CriaVar("C2_SEQUEN")) , 0})
+    aAdd(aFields, {"XXPRODUT"   , "C",   Len(CriaVar("B1_COD")), 0})
+    aAdd(aFields, {"XXCOMPO"    , "C",   Len(CriaVar("B1_COD")), 0})
+    aAdd(aFields, {"XXQTDSG1"   , "N",   12, 2})
+    aAdd(aFields, {"XXQTDSD4"   , "N",   12, 2})
+    aAdd(aFields, {"XXSTATUS"   , "C",   1 , 0})
+    aAdd(aFields, {"XXFINALIZ"  , "C",   1 , 0})
+    aAdd(aFields, {"XXSOLICIT"  , "C",   Len(CriaVar("C1_NUM")) , 0})
+    aAdd(aFields, {"XXPEDIDO"   , "C",   Len(CriaVar("C7_NUM")) , 0})
+    aAdd(aFields, {"XXIDSD4"    , "N",   40, 0})
+        
+    //Define as colunas usadas, adiciona indice e cria a temporaria no banco
+    oTempTable:SetFields( aFields )
+    oTempTable:AddIndex("1", {"XXNUMERO","XXITEM", "XXSEQUEN"} )
+    oTempTable:Create()
+    
+    //Monta o cabecalho
+    fMontaHead()
+    
+    //Montando os dados, eles devem ser montados antes de ser criado o FWBrowse
+    FWMsgRun(, {|oSay| fMontDados(oSay,aArrayDad) }, "Processando", "Buscando Estrutura e Empenhos")
+    
+    //Criando a janela
+    oDlgGrp := TDialog():New(0, 0, nJanAltu, nJanLarg, "Estrutura x Empenho", , , , , , /*nCorFundo*/, , , .T.)
+    //DEFINE MSDIALOG oDlgGrp TITLE "Dados" FROM 000, 000  TO nJanAltu, nJanLarg COLORS 0, 16777215 PIXEL
+        //Labels gerais
+        //@ 004, 003 SAY "FAT"                     SIZE 200, 030 FONT oFontAno  OF oDlgGrp COLORS RGB(149,179,215) PIXEL
+        //@ 020, 050 SAY "Listagem de Itens da"      SIZE 200, 030 FONT oFontSub  OF oDlgGrp COLORS RGB(031,073,125) PIXEL
+        //@ 030, 050 SAY "Estrutura e Empenho"       SIZE 200, 030 FONT oFontSubN OF oDlgGrp COLORS RGB(031,073,125) PIXEL
+    
+        //Botões
+        //@ 006, (nJanLarg/2-001)-(0052*01) BUTTON oBtnFech  PROMPT "Fechar"        SIZE 050, 018 OF oDlgGrp ACTION (oDlgGrp:End())   FONT oFontBtn PIXEL
+    
+        //Dados
+        @ 034, 003 GROUP oGrpDad TO (nJanAltu/2-003), (nJanLarg/2-003) PROMPT "Estrtura x Empenho" OF oDlgGrp COLOR 0, 16777215 PIXEL
+        oGrpDad:oFont := oFontBtn
+            oPanGrid := tPanel():New(043, 006, "", oDlgGrp, , , , RGB(000,000,000), RGB(254,254,254), (nJanLarg/2 - 13),     (nJanAltu/2 - 45))
+            oGetGrid := FWBrowse():New()
+            oGetGrid:DisableFilter()
+            oGetGrid:DisableConfig()
+            oGetGrid:DisableReport()
+            oGetGrid:DisableSeek()
+            oGetGrid:DisableSaveConfig()
+            oGetGrid:SetFontBrowse(oFontBtn)
+            oGetGrid:SetAlias(cAliasTab)
+            oGetGrid:SetDataTable()
+            oGetGrid:SetEditCell(.T., {|| .T.}) 
+            oGetGrid:lHeaderClick := .F.
+            oGetGrid:AddLegend(cAliasTab + "->XXFINALIZ == 'S'"   , "BLACK"             , "OP Produzida")
+            oGetGrid:AddLegend(cAliasTab + "->XXSTATUS == '1'"    , "GREEN"             , "Empenho correto")
+            oGetGrid:AddLegend(cAliasTab + "->XXSTATUS == '2'"    , "YELLOW"            , "Quantidade menor que zero")
+            oGetGrid:AddLegend(cAliasTab + "->XXSTATUS == '3'"    , "BR_MARRON_OCEAN"   , "Criar Empenho")
+            oGetGrid:AddLegend(cAliasTab + "->XXSTATUS == '4'"    , "ORANGE"            , "Remover Empenho")
+            oGetGrid:AddLegend(cAliasTab + "->XXSTATUS == '5'"    , "RED"               , "Criar OP Intermediaria")
+            oGetGrid:AddLegend(cAliasTab + "->XXSTATUS == '6'"    , "PINK"              , "Excluir OP Intermediaria")
+            oGetGrid:AddLegend(cAliasTab + "->XXSTATUS == '7'"    , "PINK"              , "Altera OP Intermediaria")
+            oGetGrid:AddMarkColumns(;
+            {|| Iif((cAliasTab)->FLAG_OK, 'LBOK', 'LBNO') },;      //ícones
+            {|| fMarkUnic()};   //ao dar duplo clique
+            )
+            oGetGrid:SetColumns(aColunas)
+            oGetGrid:SetOwner(oPanGrid)
+            
+            oGetGrid:Refresh()
+
+            oGetGrid:Activate()
+
+            fMarkTod()
+
+    oDlgGrp:Activate(, , , .T., , , bBlocoIni)
+    //ACTIVATE MsDialog oDlgGrp CENTERED
+    
+    //Deleta a temporaria
+    oTempTable:Delete()
+    
+    RestArea(aArea)
+Return
+    
+Static Function fMontaHead()
+
+    Local aHeadAux := {} AS Array
+    Local nI AS Numeric 
+    
+    //Adicionando colunas
+    //[1] - Campo da Temporaria
+    //[2] - Titulo
+    //[3] - Tipo
+    //[4] - Tamanho
+    //[5] - Decimais
+    //[6] - Máscara
+    //[7] - Editável? .T. = sim, .F. = não
+
+    aAdd(aHeadAux, {"XXNUMERO" , "Numero"     ,"C",   6 ,  0, "",              .F., NIL})
+    aAdd(aHeadAux, {"XXITEM"   , "Item"       ,"C",   2 ,  0, "",              .F., NIL})
+    aAdd(aHeadAux, {"XXSEQUEN" , "Sequencia"  ,"C",   2 ,  0, "",              .F., NIL})
+    aAdd(aHeadAux, {"XXPRODUT" , "Produto"    ,"C",   30,  0, "",              .F., NIL})
+    aAdd(aHeadAux, {"XXCOMPO"  , "Componente" ,"C",   30,  0, "",              .F., NIL})
+    aAdd(aHeadAux, {"XXQTDSG1" , "Qtd Estrut" ,"N",   12,  2, "@E 999,999.99", .F., NIL})
+    aAdd(aHeadAux, {"XXQTDSD4" , "Qtd Empenho","N",   12,  2, "@E 999,999.99", .F., NIL})
+    aAdd(aHeadAux, {"XXSTATUS" , "Status"     ,"C",   30,  0, "",              .F., {"1=Correto", "2=Qtd Divergente", "3=Criar Empenho", "4=Remover Empenho", "5=Criar OP Intermediaria", "6=Excluir OP Intermediaria", "7=Altera OP Intermediaria"}})
+    aAdd(aHeadAux, {"XXFINALIZ", "Produzido"  ,"C",   6 ,  0, "",              .F., {"S=Sim", "N=Nao"}})
+    aAdd(aHeadAux, {"XXSOLICIT", "Solicitacao","C",   6 ,  0, "",              .F., NIL})
+    aAdd(aHeadAux, {"XXPEDIDO" , "Pedido"     ,"C",   6 ,  0, "",              .F., NIL})
+    aAdd(aHeadAux, {"XXIDSD4"  , "ID Empenho" ,"N",   10 , 0, "",              .F., NIL})
+   
+    //Percorrendo e criando as colunas
+    For nI := 1 To Len(aHeadAux)
+        oColumn := FWBrwColumn():New()
+        oColumn:SetData(&("{|| " + cAliasTab + "->" + aHeadAux[nI][1] +"}"))
+        oColumn:SetTitle(aHeadAux[nI][2])
+        oColumn:SetType(aHeadAux[nI][3])
+        oColumn:SetSize(aHeadAux[nI][4])
+        oColumn:SetDecimal(aHeadAux[nI][5])
+        oColumn:SetPicture(aHeadAux[nI][6])
+  
+        //Se for ser possível ter o duplo clique
+        If aHeadAux[nI][7]
+            oColumn:SetEdit(.T.)
+            oColumn:SetReadVar(aHeadAux[nI][1])
+            oColumn:SetValid({|| ValidaCampo()})
+        EndIf
+
+        //Se tiver opções do combo
+        If ! Empty(aHeadAux[nI][8])
+            oColumn:SetOptions(aHeadAux[nI][8])
+        EndIf
+  
+        aAdd(aColunas, oColumn)
+    Next
+Return
+    
+Static Function fMontDados(oSay,aArrayDad)
+    Local aArea   := GetArea() AS Character
+    Local nI AS Numeric
+    Local aAreaSC1 := SC1->(GetArea()) AS Character
+    Local cIDBuscaC1 := "" AS Character
+    Local cNumSC := "" AS Character
+    Local cNumPed := "" AS Character
+
+    DbSelectArea("SC1")
+    SC1->(DbSetOrder(4))
+        
+    //Faz um laço de repetição
+    For nI := 1 To Len(aArrayDad)
+        //Muda a mensagem na regua
+        oSay:SetText("Adicionando registro " + cValToChar(nI) + " de " + cValToChar(Len(aArrayDad)) + "...")
+    
+        //Busca solicitação de compra e pedido de compra vinculado
+        cIDBuscaC1 := Left(aArrayDad[nI][1] + aArrayDad[nI][2] + aArrayDad[nI][3] + CriaVar("C1_OP"),Len(CriaVar("C1_OP")))
+        cNumSC := ""
+        cNumPed := ""
+        If SC1->(DbSeek(xFilial("SC1") + cIDBuscaC1))
+            While SC1->(!EOF()) .And. xFilial("SC1") == SC1->C1_FILIAL .And. cIDBuscaC1 == SC1->C1_OP .And. SC1->C1_PRODUTO == aArrayDad[nI][5]
+                cNumSC := SC1->C1_NUM
+                If !Empty(cNumPed) .And. SC1->C1_QUJE > 0
+                    cNumPed := SC1->C1_PEDIDO
+                EndIf
+                SC1->(DbSkip())
+            EndDo
+        EndIf
+        
+        //Insere os dados na temporária
+        RecLock(cAliasTab, .T.)
+            (cAliasTab)->FLAG_OK   :=  .F.
+            (cAliasTab)->XXNUMERO  := aArrayDad[nI][1]
+            (cAliasTab)->XXITEM    := aArrayDad[nI][2]
+            (cAliasTab)->XXSEQUEN  := aArrayDad[nI][3]
+            (cAliasTab)->XXPRODUT  := aArrayDad[nI][4]
+            (cAliasTab)->XXCOMPO   := aArrayDad[nI][5]
+            (cAliasTab)->XXQTDSG1  := aArrayDad[nI][6]
+            (cAliasTab)->XXQTDSD4  := aArrayDad[nI][7]
+            (cAliasTab)->XXFINALIZ := aArrayDad[nI][10]
+            (cAliasTab)->XXSTATUS  := aArrayDad[nI][11]
+            (cAliasTab)->XXSOLICIT := cNumSC
+            (cAliasTab)->XXPEDIDO  := cNumPed
+            (cAliasTab)->XXIDSD4   := aArrayDad[nI][9]
+        (cAliasTab)->(MsUnlock())
+    
+    Next
+    RestArea(aAreaSC1)
+    RestArea(aArea)
+Return
+
+
+Static Function fMarkTod()
+
+    Local cMarc := "" AS Character
+    Local lDesmarc := .F. AS Logical
+
+    //Percorre todos os registros
+    DbSelectArea(cAliasTab)
+    (cAliasTab)->(DbGoTop())
+
+    While (cAliasTab)->(!EOF())
+        If (cAliasTab)->XXSTATUS == "5"
+            cMarc := "5"
+        ElseIf (cAliasTab)->XXSTATUS == "6"
+            cMarc := "6"
+        ElseIf (cAliasTab)->XXSTATUS == "7"
+            cMarc := "7"
+        EndIf
+        If (cAliasTab)->FLAG_OK
+            lDesmarc := .T.
+        EndIf
+        (cAliasTab)->(DbSkip())
+    EndDo
+ 
+    //Volta pro topo
+    (cAliasTab)->(DbGoTop())
+
+    While (cAliasTab)->(!EOF())
+        //Atualiza o registro atual
+        RecLock(cAliasTab, .F.)
+            If lDesmarc 
+                (cAliasTab)->FLAG_OK := .F.
+            ElseIf (cAliasTab)->XXFINALIZ == "S"
+                (cAliasTab)->FLAG_OK := .F.
+            ElseIf (cAliasTab)->XXSTATUS == "1"
+                (cAliasTab)->FLAG_OK := .F.
+            ElseIf cMarc $ "5|6|7" .And. (cAliasTab)->XXSTATUS $ "5|6|7"
+                (cAliasTab)->FLAG_OK := !(cAliasTab)->FLAG_OK
+            ElseIf !cMarc $ "5|6|7"
+                (cAliasTab)->FLAG_OK := !(cAliasTab)->FLAG_OK
+            EndIf
+        (cAliasTab)->(MsUnlock())
+ 
+        (cAliasTab)->(DbSkip())
+    EndDo
+ 
+    //Volta pro topo, e atualiza a tela
+    (cAliasTab)->(DbGoTop())
+    oGetGrid:Refresh()
+Return
+
+Static Function fMarkUnic()
+
+    Local nBkpRec := (cAliasTab)->(Recno()) AS Numeric
+    Local cMarc := (cAliasTab)->XXSTATUS AS Character
+
+    If !(cAliasTab)->FLAG_OK
+
+        If (cAliasTab)->XXFINALIZ == "S"
+            FWAlertWarning( "Registro já processado. Não é permitido modificar ou executar novas ações.", "Atenção")
+            Return
+        EndIf
+
+        If (cAliasTab)->XXSTATUS == "1"
+            FWAlertWarning( "Não há diferença entre Estrutura e Empenho. Nenhuma ação pode ser realizada.", "Atenção")
+            Return
+        EndIf
+
+        //Percorre todos os registros
+        DbSelectArea(cAliasTab)
+        (cAliasTab)->(DbGoTop())
+
+        While (cAliasTab)->(!EOF())
+            If (cAliasTab)->XXSTATUS $ "5|6|7" .And. (cAliasTab)->FLAG_OK .And. !cMarc $ "5|6|7"
+                FWAlertWarning( "Foram identificadas linhas com status não permitido para esta operação. Selecione apenas linhas com status 'Criar OP intermediária', 'Excluir OP intermediária' ou 'Alterar OP intermediária' para prosseguir.", "Atenção")
+                (cAliasTab)->(DbGoTo(nBkpRec))
+                oGetGrid:Refresh()
+                Return
+            EndIf
+            If !(cAliasTab)->XXSTATUS $ "5|6|7" .And. (cAliasTab)->FLAG_OK .And. cMarc $ "5|6|7"
+                FWAlertWarning( "Existem linhas selecionadas para geração, alteração ou exclusão de OP intermediária. É necessário executar essas linhas antes de continuar.", "Atenção")
+                (cAliasTab)->(DbGoTo(nBkpRec))
+                oGetGrid:Refresh()
+                Return
+            EndIf
+
+            (cAliasTab)->(DbSkip())
+        EndDo
+
+        (cAliasTab)->(DbGoTo(nBkpRec))
+
+        (cAliasTab)->FLAG_OK := !(cAliasTab)->FLAG_OK
+        oGetGrid:Refresh()
+    Else
+        (cAliasTab)->FLAG_OK := !(cAliasTab)->FLAG_OK
+    EndIf
+
+Return
+
+Static Function fAtualiza()
+    lRecursiv := .T.
+    oDlgGrp:End()
+Return
+
+Static Function fCancela()
+    lRecursiv := .F.
+    oDlgGrp:End()
+Return
+
+Static Function fConfirma()
+
+    lRecursiv := .F. 
+
+    DbSelectArea(cAliasTab)
+    (cAliasTab)->(DbGoTop())
+
+    While (cAliasTab)->(!EOF())
+        If (cAliasTab)->FLAG_OK
+            lRecursiv := .T.
+            Do Case
+                Case (cAliasTab)->XXSTATUS == "5"
+                    fGeraOPInter()
+                Case (cAliasTab)->XXSTATUS == "6"
+                    fExcluiOPInter()
+                Case (cAliasTab)->XXSTATUS == "7"
+                    fAlteraOPInter()
+                Case (cAliasTab)->XXSTATUS == "3"
+                    fGeraEmpenho()
+                Case (cAliasTab)->XXSTATUS == "4"
+                    fExcluiEmpenho()
+                Case (cAliasTab)->XXSTATUS == "2"
+                    fAlteraEmpenho()
+            EndCase
+        EndIf
+        (cAliasTab)->(DbSkip())
+    EndDo
+
+    oDlgGrp:End()
+
+Return
+
+//Gerar OP Intermediaria faltante
+Static Function fGeraOPInter()
+
+    Local aVetor := {} AS Array
+    Local cQuery3 := "" AS Character
+    Private lMsHelpAuto := .F. AS Logical
+	Private lMsErroAuto := .F. AS Logical
+
+    cQuery3 := "SELECT MAX(SC2.C2_SEQUEN) AS SEQ FROM " + RetSqlName("SC2") + " SC2 "
+    cQuery3 += "WHERE SC2.D_E_L_E_T_ = '' AND SC2.C2_FILIAL = '" + xFilial("SC2") + "' AND SC2.C2_NUM = '" + (cAliasTab)->XXNUMERO	+ "' "
+    cQuery3 := ChangeQuery(cQuery3)
+    MPSysOpenQuery(cQuery3, "_SC2_3")
+
+    AADD(aVetor, {"C2_ITEM"		, "01"		   						,Nil})
+	AADD(aVetor, {"C2_SEQUEN" 	, SOMA1(_SC2_3->SEQ)				,Nil})
+	AADD(aVetor, {"C2_NUM"		, (cAliasTab)->XXNUMERO				,Nil})
+	AADD(aVetor, {"C2_PRODUTO"	, (cAliasTab)->XXCOMPO				,Nil})
+	AADD(aVetor, {"C2_QUANT"  	, (cAliasTab)->XXQTDSG1             ,Nil})
+	AADD(aVetor, {"C2_LOCAL"  	, "01"	                            ,Nil})
+	AADD(aVetor, {"C2_DATPRI" 	, ddatabase							,Nil})
+	AADD(aVetor, {"C2_DATPRF" 	, ddatabase							,Nil})
+	AADD(aVetor, {"C2_EMISSAO"	, ddatabase     					,Nil})
+    AADD(aVetor, {"C2_SEQPAI"  	, (cAliasTab)->XXSEQUEN           	,Nil})
+	AADD(aVetor, {"C2_TPOP"  	, "F"           					,Nil})
+	AADD(aVetor, {'AUTEXPLODE'	, 'S'								,Nil})
+
+	MSExecAuto({|x,y| mata650(x,y)},aVetor,3) // 3=Inclusao, 5=Exclusão
+
+    _SC2_3->(DbCloseArea())
+
+    If lMsErroAuto
+        MostraErro()
+    EndIf
+Return
+
+
+//Alterar OP Intermediaria faltante
+Static Function fAlteraOPInter()
+
+    Local aVetor := {} AS Array
+    Local cQuery6 := "" AS Character
+    Private lMsHelpAuto := .F. AS Logical
+	Private lMsErroAuto := .F. AS Logical
+
+    If fAlteraEmpenho()
+
+        cQuery6 := "SELECT R_E_C_N_O_ AS RECNO FROM " + RetSqlName("SC2") + " SC2 "
+        cQuery6 += "WHERE SC2.D_E_L_E_T_ = '' AND SC2.C2_FILIAL = '" + xFilial("SC2") + "' AND SC2.C2_NUM = '" + (cAliasTab)->XXNUMERO	+ "' "
+        cQuery6 += "AND SC2.C2_SEQPAI = '" + (cAliasTab)->XXSEQUEN + "' AND SC2.C2_PRODUTO = '" + (cAliasTab)->XXCOMPO + "' "
+        cQuery6 += "AND SC2.C2_QUANT = " + cValtoChar((cAliasTab)->XXQTDSD4) + " "
+        cQuery6 := ChangeQuery(cQuery6)
+        MPSysOpenQuery(cQuery6, "_SC2_5")
+
+        DbSelectArea("_SC2_5")
+
+        DbSelectArea("SC2")
+        SC2->(DbGoTo(_SC2_5->RECNO))
+
+        AADD(aVetor, {"C2_FILIAL"	, SC2->C2_FILIAL		    ,Nil})
+        AADD(aVetor, {"C2_NUM"		, SC2->C2_NUM				,Nil})
+        AADD(aVetor, {"C2_ITEM"		, SC2->C2_ITEM	    		,Nil})
+        AADD(aVetor, {"C2_SEQUEN" 	, SC2->C2_SEQUEN			,Nil})
+        AADD(aVetor, {"C2_PRODUTO"	, SC2->C2_PRODUTO   		,Nil})
+        AADD(aVetor, {"C2_ITEMGRD"	, SC2->C2_ITEMGRD 			,Nil})
+        AADD(aVetor, {"C2_QUANT"  	, (cAliasTab)->XXQTDSG1     ,Nil})
+        
+        MSExecAuto({|x,y| mata650(x,y)},aVetor,4) // 3=Inclusao, 5=Exclusão
+
+        _SC2_5->(DbCloseArea())
+
+        If lMsErroAuto
+            MostraErro()
+        EndIf
+    EndIf
+Return
+
+
+//Altera Empenhos
+Static Function fAlteraEmpenho()
+
+    Local aVetor := {} AS Array
+    Private lMsHelpAuto := .F. AS Logical
+	Private lMsErroAuto := .F. AS Logical
+
+    DbSelectArea("SD4")
+    SD4->(DbGoTo((cAliasTab)->XXIDSD4))
+    
+    AADD(aVetor, {"D4_OP"		, SD4->D4_OP  			,Nil})
+    AADD(aVetor, {"D4_COD"		, SD4->D4_COD		    ,Nil})
+    AADD(aVetor, {"D4_TRT"	    , SD4->D4_TRT			,Nil})
+    AADD(aVetor, {"D4_LOTECTL"	, SD4->D4_LOTECTL		,Nil})
+    AADD(aVetor, {"D4_NUMLOTE"	, SD4->D4_NUMLOTE 		,Nil})
+    AADD(aVetor, {"D4_QTDEORI"	, (cAliasTab)->XXQTDSG1	,Nil})
+    AADD(aVetor, {"D4_QUANT"	, (cAliasTab)->XXQTDSG1 ,Nil})
+
+    MsExecAuto( { |x,y| MATA380(x,y) }, aVetor , 4 )
+    If lMsErroAuto
+        MostraErro()
+    EndIf
+
+Return !lMsErroAuto
+
+
+//Gerar Empenhos
+Static Function fGeraEmpenho()
+
+    Local aVetor := {} AS Array
+    Local cQuery4 := "" AS Character
+    Local cOP    := (cAliasTab)->XXNUMERO + (cAliasTab)->XXITEM + (cAliasTab)->XXSEQUEN AS Character
+    Local cSeq   := "001" AS Character 
+    Private lMsHelpAuto := .F. AS Logical
+	Private lMsErroAuto := .F. AS Logical
+
+    cQuery4 := "SELECT MAX(SD4.D4_TRT) AS SEQ FROM " + RetSqlName("SD4") + " SD4 "
+    cQuery4 += "WHERE SD4.D_E_L_E_T_ = '' AND SD4.D4_FILIAL = '" + xFilial("SD4") + "' "
+    cQuery4 += "AND SD4.D4_COD = '" + (cAliasTab)->XXCOMPO	+ "' AND SD4.D4_OP = '" + cOP	+ "' "
+    cQuery4 := ChangeQuery(cQuery4)
+    MPSysOpenQuery(cQuery4, "_SD4_1")
+
+    If _SD4_1->(!EOF())
+        If !Empty(_SD4_1->SEQ)
+            cSeq := Soma1(_SD4_1->SEQ)
+        EndIf
+    EndIf
+
+    _SD4_1->(DbCloseArea())
+
+    DbSelectArea("SC2")
+    SC2->(DbSetorder(1))
+    If SC2->(DbSeek(xFilial("SC2") + cOP))
+
+        AADD(aVetor, {"D4_OP"		, cOP		  						,Nil})
+        AADD(aVetor, {"D4_COD"		, (cAliasTab)->XXCOMPO		  		,Nil})
+        AADD(aVetor, {"D4_LOCAL"	, SC2->C2_LOCAL						,Nil})
+        AADD(aVetor, {"D4_QTDEORI"	, (cAliasTab)->XXQTDSG1				,Nil})
+        AADD(aVetor, {"D4_QUANT"	, (cAliasTab)->XXQTDSG1 			,Nil})
+        AADD(aVetor, {"D4_DATA"		, SC2->C2_DATPRI					,Nil})
+        AADD(aVetor, {"D4_PRODUTO"	, (cAliasTab)->XXPRODUT				,Nil})
+        AADD(aVetor, {"D4_TRT"	    , cSeq              				,Nil})
+
+        MsExecAuto( { |x,y| MATA380(x,y) }, aVetor , 3 )
+        If lMsErroAuto
+            MostraErro()
+        EndIf
+
+    EndIf
+
+Return
+
+//Exclui Empenhos
+Static Function fExcluiEmpenho()
+
+    Local aVetor := {} AS Array
+    Private lMsHelpAuto := .F. AS Logical
+	Private lMsErroAuto := .F. AS Logical
+
+    DbSelectArea("SD4")
+    SD4->(DbGoTo((cAliasTab)->XXIDSD4))
+    
+    AADD(aVetor, {"D4_OP"		, SD4->D4_OP  			,Nil})
+    AADD(aVetor, {"D4_COD"		, SD4->D4_COD		    ,Nil})
+    AADD(aVetor, {"D4_TRT"	    , SD4->D4_TRT			,Nil})
+    AADD(aVetor, {"D4_LOTECTL"	, SD4->D4_LOTECTL		,Nil})
+    AADD(aVetor, {"D4_NUMLOTE"	, SD4->D4_NUMLOTE 		,Nil})
+
+    MsExecAuto( { |x,y| MATA380(x,y) }, aVetor , 5 )
+    If lMsErroAuto
+        MostraErro()
+    EndIf
+
+Return !lMsErroAuto
+
+Static Function fExcluiOPInter()
+
+    Local aVetor := {} AS Array
+    Local cQuery5 := "" AS Character
+    Local lContinua := .T. AS Logical
+    Private lMsHelpAuto := .F. AS Logical
+	Private lMsErroAuto := .F. AS Logical
+
+    If Empty((cAliasTab)->XXCOMPO)
+        cQuery5 := "SELECT SC2.R_E_C_N_O_ AS RECNO, SC2.C2_SEQPAI "
+        cQuery5 += "FROM "+ RetSqlName("SC2") + " SC2 "
+        cQuery5 += "WHERE SC2.D_E_L_E_T_ = '' AND SC2.C2_FILIAL = '" + xFilial("SC2") + "' AND SC2.C2_NUM = '" + (cAliasTab)->XXNUMERO + "' "
+        cQuery5 += "AND SC2.C2_ITEM = '" + (cAliasTab)->XXITEM + "' AND SC2.C2_PRODUTO = '" + (cAliasTab)->XXPRODUT + "' AND SC2.C2_SEQUEN = '" + (cAliasTab)->XXSEQUEN + "' "
+        cQuery5 := ChangeQuery(cQuery5)
+        MPSysOpenQuery(cQuery5, "_SC2_4")
+        SC2->(DbGoTo(_SC2_4->RECNO))
+
+    Else
+        cQuery5 := "SELECT R_E_C_N_O_ AS RECNO FROM " + RetSqlName("SC2") + " SC2 "
+        cQuery5 += "WHERE SC2.D_E_L_E_T_ = '' AND SC2.C2_FILIAL = '" + xFilial("SC2") + "' AND SC2.C2_NUM = '" + (cAliasTab)->XXNUMERO	+ "' "
+        cQuery5 += "AND SC2.C2_SEQPAI = '" + (cAliasTab)->XXSEQUEN + "' AND SC2.C2_PRODUTO = '" + (cAliasTab)->XXCOMPO + "' "
+        cQuery5 += "AND SC2.C2_QUANT = " + cValtoChar((cAliasTab)->XXQTDSD4) + " "
+        cQuery5 := ChangeQuery(cQuery5)
+        MPSysOpenQuery(cQuery5, "_SC2_4")
+
+        DbSelectArea("_SC2_4")
+
+        DbSelectArea("SC2")
+        SC2->(DbGoTo(_SC2_4->RECNO))
+
+        lContinua := fExcluiEmpenho()
+    EndIf
+
+    If lContinua
+
+        AADD(aVetor, {"C2_FILIAL"	, SC2->C2_FILIAL		    ,Nil})
+        AADD(aVetor, {"C2_NUM"		, SC2->C2_NUM				,Nil})
+        AADD(aVetor, {"C2_ITEM"		, SC2->C2_ITEM	    		,Nil})
+        AADD(aVetor, {"C2_SEQUEN" 	, SC2->C2_SEQUEN			,Nil})
+        AADD(aVetor, {"C2_PRODUTO"	, SC2->C2_PRODUTO   		,Nil})
+        AADD(aVetor, {"C2_ITEMGRD"	, SC2->C2_ITEMGRD 			,Nil})
+
+        MSExecAuto({|x,y| mata650(x,y)},aVetor,5) // 3=Inclusao, 5=Exclusão
+
+        If lMsErroAuto
+            MostraErro()
+        EndIf
+
+        _SC2_4->(DbCloseArea())
+    EndIf
+Return
+
+Static Function ValidaCampo()
+
+ 
+Return .T.

@@ -89,14 +89,14 @@ User Function FB106FAT(nOpc)
 	//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
 	//³Calcula o preco de lista                     ³
 	//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
-	nValMerc  := TMP1->CK_VALOR
+	nValMerc  := (M->CK_ZPRCVEN/0.82764)//TMP1->CK_VALOR
 	nPrcLista := TMP1->CK_PRUNIT
 	nQtdPeso  := 0
 	nItem++
 	If ( nPrcLista == 0 )
-		nPrcLista := A410Arred(nValMerc/TMP1->CK_QTDVEN,"CK_PRCVEN")
+		nPrcLista :=nValMerc/TMP1->CK_QTDVEN //A410Arred(nValMerc/TMP1->CK_QTDVEN,"CK_PRCVEN")
 	EndIf
-	nAcresFin := A410Arred(TMP1->CK_PRCVEN*SE4->E4_ACRSFIN/100,"D2_PRCVEN")
+	nAcresFin := A410Arred((M->CK_ZPRCVEN/0.82764)*SE4->E4_ACRSFIN/100,"D2_PRCVEN")//A410Arred(TMP1->CK_PRCVEN*SE4->E4_ACRSFIN/100,"D2_PRCVEN")
 	nValMerc  += A410Arred(nAcresFin*TMP1->CK_QTDVEN,"D2_TOTAL")
 	nDesconto := A410Arred(nPrcLista*TMP1->CK_QTDVEN,"D2_DESCON")-nValMerc
 	nDesconto := IIf(nDesconto==0,TMP1->CK_VALDESC,nDesconto)
@@ -155,7 +155,7 @@ User Function FB106FAT(nOpc)
 
 	aImp := MaFisRodape(1,Nil,,,Nil,.T.,,,,,,,,,,,,,,,.T.)
 
-	For nX:= 1 to Len(aImp)
+	For nX:= 1 to Len(aImp)	
 		If aImp[nX,1]=="ICM"
 			nAliqICM := aImp[nX,4]
 			nValICM  := aImp[nX,5]
@@ -207,3 +207,6 @@ User Function FB106FAT(nOpc)
 	endif
 
 Return nRet
+//(M->CK_ZPRCVEN/0.82764)
+//48,23520
+//nValICM := ((M->CK_ZPRCVEN/0.82764)*(1-(48.23520/100)))*0.17

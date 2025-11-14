@@ -3,6 +3,7 @@ User Function MA650BUT()
      
     //Adicionando rotinas no ações relacionadas
     aAdd(aRotina, {'*Reprocessa Ordem','u_chamaexc', 0, 6 })
+    AAdd( aRotina, { "Ajusta OPs e Empenhos", "U_FB100PCP()", 0, 4 } )
      
     
 Return aRotina
